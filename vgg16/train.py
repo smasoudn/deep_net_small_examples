@@ -118,6 +118,18 @@ class VGG16:
         return tf.constant(self.data_dict[name][0], name="weights")
 
 
+def get_batches(x, y, n_batches=10):
+    batch_size = len(x) // n_batches
+
+    for ii in range(0, n_batches*batch_size, batch_size):
+        if ii != (n_batches-1)*batch_size:
+            X, Y = x[ii:ii+batch_size], y[ii:ii+batch_size]
+        else:
+            X, Y = x[ii:], y[ii:]
+
+        yield  X, Y
+
+
 # System input parcer
 #####################################################
 def parcer(argv):
@@ -140,9 +152,9 @@ def parcer(argv):
 
     return input_folder, vgg16_npy_path
 
-# Main
+# Extract codes from fc6
 #####################################################
-def main(argv):
+def extract_codes(argv):
     input_folder, vgg16_npy_path = parcer(argv)
     print("Training folder is {}".format(input_folder))
 
@@ -187,11 +199,108 @@ def main(argv):
                     if prog % 10 == 0:
                         print("{}% processed...".format(prog))
 
+        with open("codes", "w") as f:
+            codes.tofile(f)
+        import csv
+        with open("labels","w") as f:
+            writer = csv.writer(f, delimiter='\n')
+            writer.writerow(labels)
+
+
+###########################################
+def train(epoches=10):
+    import csv
+    with open("labels", "r") as f:
+        reader = csv.reader(f, delimiter='\n')
+        labels = np.array([x  for x in reader if len(x) > 0]).squeeze()
+    with open("codes", "r") as f:
+        codes = np.fromfile(f,  dtype=np.float32)
+        codes = codes.reshape((len(labels), -1))
+
+
+    from sklearn.preprocessing import LabelBinarizer
+
+    lb = LabelBinarizer()
+    lb.fit(labels)
+    labels_vec = lb.transform(labels)
+
+
+    from sklearn.model_selection import StratifiedShuffleSplit
+    ss = StratifiedShuffleSplit(n_splits=1, test_size = 0.1)
+    train_idx, test_idx = next(ss.split(codes, labels_vec))
+
+    train_x, train_y = codes[train_idx], labels_vec[train_idx]
+    test_x, test_y = codes[test_idx], labels_vec[test_idx]
+
+    print("Train shapes (x, y):", train_x.shape, train_y.shape)
+    print("Test shapes (x, y):", test_x.shape, test_y.shape)
+
+
+    inputs_ = tf.placeholder(tf.float32, shape=[None, codes.shape[1]])
+    labels_ = tf.placeholder(tf.int64, shape=[None, labels_vec.shape[1]])
+
+    fc = tf.contrib.layers.fully_connected(inputs_, 256)
+
+    logits = tf.contrib.layers.fully_connected(fc,  labels_vec.shape[1], activation_fn=None)
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels_, logits=logits)
+    cost = tf.reduce_mean(cross_entropy)
+
+    optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+    predict = tf.nn.softmax(logits)
+    correct_pred = tf.equal(tf.argmax(predict, 1), tf.argmax(labels_, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+    iteration  = 0
+    save = tf.train.Saver()
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for e in range(epoches):
+            for x, y, in get_batches(train_x, train_y):
+                feed = {inputs_: x, labels_: y}
+                loss, _ = sess.run([cost, optimizer], feed_dict=feed)
+                print("Epoch: {}/{}".format(e+1, epoches),
+                      "Iteration: {}".format(iteration),
+                      "Training loss: {:.5f}".format(loss))
+                iteration += 1
+
+                if iteration % 10 == 0:
+                    feed = {inputs_: test_x, labels_: test_y}
+                    val_acc = sess.run(accuracy, feed_dict=feed)
+                    print("=========================")
+                    print("Epoch: {}/{}".format(e, epoches),
+                          "Iteration: {}".format(iteration),
+                          "Validation Acc: {:.4f}".format(val_acc))
+                    print("=========================")
+        save.save(sess, "checkpoints/flowers.ckpt")
+
+
+
+
+def test(image):
+    import matplotlib.pyplot as plt
+    from scipy.ndimage import imread
+
+    test_img = imread(image)
+    plt.imshow(test_img)
+
+    with tf.Session() as sess:
+        input_ = tf.placeholder(tf.float32, [None, 224, 224, 3])
+        vgg = VGG16(vgg16_npy_path)
+        vgg.build(input_)
+
+
 
 
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    #extract_codes(sys.argv[1:])
+    train(epoches=400)
+
+    img1 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
+    img2 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/daisy/8887005939_b19e8305ee.jpg"
+
+    test(img1)
 
 
