@@ -136,15 +136,15 @@ def parcer(argv):
     input_folder = ''
     vgg16_npy_path = ''
     try:
-        opts, args = getopt.getopt(argv, "hiv", ["input=", "vggnpy="])
+        opts, args = getopt.getopt(argv, "hiv", ["help=", "input=", "vggnpy="])
     except  getopt.GetoptError:
-        print ('train.py -i <input_directory>')
+        print ('Error 1": train.py -i <input_directory> -v <path_to_vgg16.npy>')
         sys.exit(1)
 
     for opt, arg in opts:
         if opt == '-h':
-            print('train.py -i <input_directory')
-            sys.exit()
+            print('Error 2: train.py -i <input_directory> -v <path_to_vgg16.npy>')
+            sys.exit(2)
         elif opt == '-i' or opt == "--input":
             input_folder = arg
         elif opt == '-v' or opt == "--vggnpy":
@@ -154,10 +154,7 @@ def parcer(argv):
 
 # Extract codes from fc6
 #####################################################
-def extract_codes(argv):
-    input_folder, vgg16_npy_path = parcer(argv)
-    print("Training folder is {}".format(input_folder))
-
+def extract_codes(input_folder, vgg16_npy_path):
 
     contents = os.listdir(input_folder)
     classes = [each for each in contents if os.path.isdir(input_folder + each)]
@@ -276,18 +273,129 @@ def train(epoches=10):
 
 
 
+class FlowerClassifier:
+    def __init__(self, vgg16_npy_path):
+        import csv
+        with open("labels", "r") as f:
+            reader = csv.reader(f, delimiter='\n')
+            labels = np.array([x for x in reader if len(x) > 0]).squeeze()
 
-def test(image):
+        from sklearn.preprocessing import LabelBinarizer
+        self.lb = LabelBinarizer()
+        self.lb.fit(labels)
+
+        self.input_ = tf.placeholder(tf.float32, [None, 224, 224, 3])
+        with tf.Session() as sess:
+            self.vgg = VGG16(vgg16_npy_path)
+            self.vgg.build_network(self.input_)
+
+
+        self.inputs_ = tf.placeholder(tf.float32, shape=[None, 4096])
+        self.labels_ = tf.placeholder(tf.int64, shape=[None, 5])
+
+        self.fc = tf.contrib.layers.fully_connected(self.inputs_, 256)
+
+        self.logits = tf.contrib.layers.fully_connected(self.fc, 5, activation_fn=None)
+        self.cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=self.labels_, logits=self.logits)
+        self.cost = tf.reduce_mean(self.cross_entropy)
+
+        self.optimizer = tf.train.AdamOptimizer().minimize(self.cost)
+        self.predicted = tf.nn.softmax(self.logits)
+        self.correct_pred = tf.equal(tf.argmax(self.predicted, 1), tf.argmax(self.labels_, 1))
+        self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
+
+        self.saver = tf.train.Saver()
+        self.sess = tf.Session()
+        self.saver.restore(self.sess, tf.train.latest_checkpoint("checkpoints"))
+
+
+    def predict(self, image):
+        img = utilities.load_image(image)
+        img = img.reshape((1, IMG_HEIGHT, IMG_WIDTH, 3))
+
+        feed_dict = {self.input_: img}
+        with tf.Session() as sess:
+            code = sess.run(self.vgg.relu6, feed_dict=feed_dict)
+
+
+        feed = {self.inputs_: code}
+        prediction = self.sess.run(self.predicted, feed_dict=feed).squeeze()
+
+        import matplotlib.pyplot as plt
+        from scipy.ndimage import imread
+        test_img = imread(image)
+
+        plt.subplot(121)
+        plt.imshow(test_img)
+        plt.subplot(122)
+        plt.barh(np.arange(5), prediction)
+        _ = plt.yticks(np.arange(5), self.lb.classes_)
+        plt.show()
+
+
+
+
+
+
+
+
+def test(image, vgg16_npy_path):
     import matplotlib.pyplot as plt
     from scipy.ndimage import imread
+    import csv
+    with open("labels", "r") as f:
+        reader = csv.reader(f, delimiter='\n')
+        labels = np.array([x  for x in reader if len(x) > 0]).squeeze()
+
+    from sklearn.preprocessing import LabelBinarizer
+    lb = LabelBinarizer()
+    lb.fit(labels)
+    #labels_vec = lb.transform(labels)
+
+
 
     test_img = imread(image)
-    plt.imshow(test_img)
-
+    input_ = tf.placeholder(tf.float32, [None, 224, 224, 3])
     with tf.Session() as sess:
-        input_ = tf.placeholder(tf.float32, [None, 224, 224, 3])
         vgg = VGG16(vgg16_npy_path)
-        vgg.build(input_)
+        vgg.build_network(input_)
+
+        img = utilities.load_image(image)
+        img = img.reshape((1, IMG_HEIGHT, IMG_WIDTH, 3))
+
+        feed_dict = {input_: img}
+        code = sess.run(vgg.relu6, feed_dict=feed_dict)
+
+
+
+    inputs_ = tf.placeholder(tf.float32, shape=[None, code.shape[1]])
+    labels_ = tf.placeholder(tf.int64, shape=[None, 5])
+
+    fc = tf.contrib.layers.fully_connected(inputs_, 256)
+
+    logits = tf.contrib.layers.fully_connected(fc, 5, activation_fn=None)
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels_, logits=logits)
+    cost = tf.reduce_mean(cross_entropy)
+
+    optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+    predicted = tf.nn.softmax(logits)
+    correct_pred = tf.equal(tf.argmax(predicted, 1), tf.argmax(labels_, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        saver.restore(sess, tf.train.latest_checkpoint("checkpoints"))
+        feed = {inputs_: code}
+        prediction = sess.run(predicted, feed_dict=feed).squeeze()
+
+    plt.subplot(121)
+    plt.imshow(test_img)
+    plt.subplot(122)
+    plt.barh(np.arange(5), prediction)
+    _ = plt.yticks(np.arange(5), lb.classes_)
+    plt.show()
+
 
 
 
@@ -295,12 +403,21 @@ def test(image):
 
 
 if __name__ == '__main__':
-    #extract_codes(sys.argv[1:])
-    train(epoches=400)
+    input_folder, vgg16_npy_path = parcer(sys.argv[1:])
 
-    img1 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
-    img2 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/daisy/8887005939_b19e8305ee.jpg"
+    #extract_codes(input_folder, vgg16_npy_path)
+    #train(epoches=400)
 
-    test(img1)
+    classifier = FlowerClassifier(vgg16_npy_path)
 
+
+    img1 = "/home/masoud/projects/data/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
+    img2 = "/home/masoud/projects/data/flower_photos/daisy/8887005939_b19e8305ee.jpg"
+    img3 = "/home/masoud/projects/data/flower_photos/tupils/8762189906_8223cef62f.jpg"
+    img4 = "/home/masoud/projects/data/flower_photos/dandelion/9152356642_06ae73113f.jpg"
+
+    images = [img1, img2, img3, img4]
+
+    for img in images:
+        classifier.predict(img)
 
