@@ -410,10 +410,9 @@ if __name__ == '__main__':
 
     classifier = FlowerClassifier(vgg16_npy_path)
 
-
     img1 = "/home/masoud/projects/data/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
     img2 = "/home/masoud/projects/data/flower_photos/daisy/8887005939_b19e8305ee.jpg"
-    img3 = "/home/masoud/projects/data/flower_photos/tupils/8762189906_8223cef62f.jpg"
+    img3 = "/home/masoud/projects/data/flower_photos/tulips/8762189906_8223cef62f.jpg"
     img4 = "/home/masoud/projects/data/flower_photos/dandelion/9152356642_06ae73113f.jpg"
 
     images = [img1, img2, img3, img4]
