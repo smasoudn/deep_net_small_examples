@@ -309,11 +309,15 @@ class FlowerClassifier:
         self.saver.restore(self.sess, tf.train.latest_checkpoint("checkpoints"))
 
 
-    def predict(self, image):
-        img = utilities.load_image(image)
-        img = img.reshape((1, IMG_HEIGHT, IMG_WIDTH, 3))
+    def predict(self, images):
+        image_batch = []
+        for i in images:
+            img = utilities.load_image(i)
+            img = img.reshape((IMG_HEIGHT, IMG_WIDTH, 3))
+            image_batch.append(img)
 
-        feed_dict = {self.input_: img}
+
+        feed_dict = {self.input_: image_batch}
         with tf.Session() as sess:
             code = sess.run(self.vgg.relu6, feed_dict=feed_dict)
 
@@ -323,14 +327,16 @@ class FlowerClassifier:
 
         import matplotlib.pyplot as plt
         from scipy.ndimage import imread
-        test_img = imread(image)
 
-        plt.subplot(121)
-        plt.imshow(test_img)
-        plt.subplot(122)
-        plt.barh(np.arange(5), prediction)
-        _ = plt.yticks(np.arange(5), self.lb.classes_)
-        plt.show()
+        for i in range(len(images)):
+            test_img = imread(images[i])
+
+            plt.subplot(121)
+            plt.imshow(test_img)
+            plt.subplot(122)
+            plt.barh(np.arange(5), prediction[i])
+            _ = plt.yticks(np.arange(5), self.lb.classes_)
+            plt.show()
 
 
 
@@ -410,13 +416,20 @@ if __name__ == '__main__':
 
     classifier = FlowerClassifier(vgg16_npy_path)
 
+<<<<<<< HEAD
     img1 = "/home/masoud/projects/data/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
     img2 = "/home/masoud/projects/data/flower_photos/daisy/8887005939_b19e8305ee.jpg"
     img3 = "/home/masoud/projects/data/flower_photos/tulips/8762189906_8223cef62f.jpg"
     img4 = "/home/masoud/projects/data/flower_photos/dandelion/9152356642_06ae73113f.jpg"
+=======
+
+    img1 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/roses/9159362388_c6f4cf3812_n.jpg"
+    img2 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/daisy/8887005939_b19e8305ee.jpg"
+    img3 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/tulips/8762189906_8223cef62f.jpg"
+    img4 = "/media/masoud/DATA/Projects/deep-learning/transfer-learning/flower_photos/dandelion/9152356642_06ae73113f.jpg"
+>>>>>>> 4603cf4dfff0a242d33469cec3b88aeb41a74ad5
 
     images = [img1, img2, img3, img4]
 
-    for img in images:
-        classifier.predict(img)
+    classifier.predict(images)
 
